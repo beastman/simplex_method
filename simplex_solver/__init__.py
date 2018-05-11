@@ -1,6 +1,7 @@
-# -*- coding: utf-8 -*-
 from copy import deepcopy
 from logging import debug
+
+from .exceptions import SimplexSolverException, NoSolutionException
 
 
 class SimplexSolver(object):
@@ -86,7 +87,7 @@ class SimplexSolver(object):
                 pos_found = True
                 break
         if not pos_found:
-            raise Exception('Нет решения. Задача не ограничена.')
+            raise NoSolutionException('Нет решения. Задача не ограничена.')
         ratio = []
         for i, b in enumerate(b_col):
             if p_col[i] <= 0:
@@ -131,54 +132,13 @@ class SimplexSolver(object):
     def _check_ready_to_solve(self):
         """Проверяет, что выполнены все предусловия перед началом решения задачи"""
         if self._is_max is None:
-            raise Exception('Не задан тип целевой функции')
+            raise SimplexSolverException('Не задан тип целевой функции')
         if self._target_multipliers is None or len(self._target_multipliers) < 2:
-            raise Exception('Не заданы коэффициенты целевой функции')
+            raise SimplexSolverException('Не заданы коэффициенты целевой функции')
         if self._constraints_counter < 2:
-            raise Exception('Не заданы ограничения')
+            raise SimplexSolverException('Не заданы ограничения')
 
-    def set_maximize(self):
-        """Устанавливает тип задачи в поиск максимума"""
-        self._is_max = True
-
-    def set_minimize(self):
-        """Устанавливает тип задачи в поиск минимума"""
-        self._is_max = False
-
-    def add_target_variable(self, multiplier):
-        """Добавляет переменную в целевую функцию, ожидает на входе коэффициент этой
-        переменной"""
-        if self._target_multipliers is None:
-            self._target_multipliers = []
-        self._target_multipliers.append(float(multiplier))
-
-    def add_constraint(self, *args):
-        """Добавляет ограничение. Ожидает на входе коэфициенты неравенства, знак и
-        правую часть неравенства. Например add_constraint(1,2,3,'<=',4) будет
-        интерпретировано, как 1x + 2y + 3z <= 4"""
-        if self._target_multipliers is None or len(self._target_multipliers) < 2:
-            raise Exception('Сначала добавьте переменные целевой функции')
-        if len(args) != len(self._target_multipliers) + 2:
-            raise Exception("Количество аргументов не соответствует целевой функции."
-                            " Ожидается %s коэффициентов, знак неравенства и правая часть"
-                            % (len(self._target_multipliers),))
-        sign = args[-2]
-        if sign not in self.valid_inequality_signs:
-            raise Exception('Недопустимый знак неравенства')
-        if self._constraints is None:
-            self._constraints = {}
-        sign_constraints = self._constraints.get(sign, [])
-        sign_constraints.append(args)
-        self._constraints[sign] = sign_constraints
-        self._constraints_counter += 1
-        if sign == '=':
-            self._e_constraints_counter += 1
-        elif sign == '>=':
-            self._gte_constraints_counter += 1
-        elif sign == '<=':
-            self._lte_constraints_counter += 1
-
-    def solve(self):
+    def _solve(self):
         """Основная функция поиска решений. На выходе возвращает структуру
         ([X1, X2, XY], Значение Z)"""
         self._check_ready_to_solve()
@@ -265,3 +225,47 @@ class SimplexSolver(object):
             else:
                 x_values.append(0)
         return x_values, z_value
+
+    def add_target_variable(self, multiplier):
+        """Добавляет переменную в целевую функцию, ожидает на входе коэффициент этой
+        переменной"""
+        if self._target_multipliers is None:
+            self._target_multipliers = []
+        self._target_multipliers.append(float(multiplier))
+
+    def add_constraint(self, *args):
+        """Добавляет ограничение. Ожидает на входе коэфициенты неравенства, знак и
+        правую часть неравенства. Например add_constraint(1,2,3,'<=',4) будет
+        интерпретировано, как 1x + 2y + 3z <= 4"""
+        if self._target_multipliers is None or len(self._target_multipliers) < 2:
+            raise SimplexSolverException('Сначала добавьте переменные целевой функции')
+        if len(args) != len(self._target_multipliers) + 2:
+            raise SimplexSolverException(
+                f"Количество аргументов не соответствует целевой функции."
+                f"Ожидается {len(self._target_multipliers)} коэффициентов, знак неравенства и правая часть"
+            )
+        sign = args[-2]
+        if sign not in self.valid_inequality_signs:
+            raise SimplexSolverException('Недопустимый знак неравенства')
+        if self._constraints is None:
+            self._constraints = {}
+        sign_constraints = self._constraints.get(sign, [])
+        sign_constraints.append(args)
+        self._constraints[sign] = sign_constraints
+        self._constraints_counter += 1
+        if sign == '=':
+            self._e_constraints_counter += 1
+        elif sign == '>=':
+            self._gte_constraints_counter += 1
+        elif sign == '<=':
+            self._lte_constraints_counter += 1
+
+    def solve_maximize(self):
+        """Поиск максимума целевой функции"""
+        self._is_max = True
+        return self._solve()
+
+    def solve_minimize(self):
+        """Поиск минимума целевой функции"""
+        self._is_max = False
+        return self._solve()
